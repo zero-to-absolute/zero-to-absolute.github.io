@@ -1,0 +1,23 @@
+{
+  "name": "Flutter Dev Container",
+  "image": "ghcr.io/cirruslabs/flutter:stable",
+  "forwardPorts": [3000, 8080],
+  "portsAttributes": {
+    "3000": {
+      "label": "Flutter Web",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dart-code.dart-code",
+        "dart-code.flutter"
+      ],
+      "settings": {
+        "dart.flutterSdkPath": "/sdks/flutter"
+      }
+    }
+  },
+  "postCreateCommand": "flutter pub get"
+}
