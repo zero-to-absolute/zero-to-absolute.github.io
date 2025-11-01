@@ -1,27 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_auth_ui/supabase_auth_ui.dart';
 import 'dart:async';
 
-
-// Инициализация приложения с подключением к Supabase
+// ТОЧКА ВХОДА В ПРИЛОЖЕНИЕ
 void main() async {
+  // Инициализация Flutter перед запуском асинхронных операций
   WidgetsFlutterBinding.ensureInitialized();
   
+  // Подключение к Supabase: указываем URL проекта и публичный ключ (anon key)
   await Supabase.initialize(
     url: 'https://zbptxyjdkybngjnvmygx.supabase.co',
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpicHR4eWpka3libmdqbnZteWd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwOTUxNjYsImV4cCI6MjA3NTY3MTE2Nn0.Z-AGcUCqURdQGNMKLSJCSyD9bDMUrqcPX-eBeuZ2s2w',
   );
   
+  // Запуск приложения
   runApp(const MyApp());
 }
 
-
+// Глобальная переменная для быстрого доступа к клиенту Supabase
 final supabase = Supabase.instance.client;
 
-
+// ГЛАВНЫЙ ВИДЖЕТ ПРИЛОЖЕНИЯ
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
-
 
   @override
   Widget build(BuildContext context) {
@@ -29,159 +32,242 @@ class MyApp extends StatelessWidget {
       title: 'Commerce App',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true,
+        useMaterial3: true, // Использование Material Design 3
       ),
-      home: const HomePage(),
+      home: const AuthGate(), // Стартовая страница - проверка авторизации
     );
   }
 }
 
+// ПРОВЕРКА АВТОРИЗАЦИИ (AuthGate)
+// Этот виджет отслеживает состояние авторизации пользователя.
+// Если пользователь авторизован - показывает HomePage,
+// если нет - показывает страницу входа/регистрации (AuthPage).
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
 
+  @override
+  Widget build(BuildContext context) {
+    // StreamBuilder слушает изменения статуса авторизации в реальном времени
+    return StreamBuilder<AuthState>(
+      stream: supabase.auth.onAuthStateChange, // Поток событий авторизации
+      builder: (context, snapshot) {
+        // Если есть активная сессия - пользователь авторизован
+        if (snapshot.hasData && snapshot.data!.session != null) {
+          return const HomePage(); // Переходим на главную страницу
+        }
+        // Иначе показываем страницу входа
+        return const AuthPage();
+      },
+    );
+  }
+}
+
+// СТРАНИЦА ВХОДА И РЕГИСТРАЦИИ (AuthPage)
+class AuthPage extends StatelessWidget {
+  const AuthPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Вход / Регистрация'),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      ),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400), // Ограничиваем ширину формы
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Иконка пользователя
+                const Icon(
+                  Icons.account_circle,
+                  size: 100,
+                  color: Colors.blue,
+                ),
+                const SizedBox(height: 20),
+                
+                // Название приложения
+                const Text(
+                  'Commerce App',
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 10),
+                
+                // Инструкция для пользователя
+                const Text(
+                  'Войдите или зарегистрируйтесь для продолжения',
+                  style: TextStyle(fontSize: 16, color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 40),
+                
+                // Готовая форма входа/регистрации из пакета supabase_auth_ui
+                SupaEmailAuth(
+                  // redirectTo нужен для deep links (для мобильных приложений)
+                  // Для веб-версии не используется (null)
+                  redirectTo: kIsWeb ? null : 'io.mydomain.myapp://callback',
+                  
+                  // Callback при успешном входе
+                  onSignInComplete: (response) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Вход выполнен успешно!'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  },
+                  
+                  // Callback при успешной регистрации
+                  onSignUpComplete: (response) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Регистрация завершена! Проверьте email для подтверждения.'),
+                        backgroundColor: Colors.blue,
+                      ),
+                    );
+                  },
+                  
+                  // Русская локализация текстов формы
+                  localization: const SupaEmailAuthLocalization(
+                    enterEmail: 'Введите ваш email',
+                    enterPassword: 'Введите ваш пароль',
+                    signIn: 'Войти',
+                    signUp: 'Зарегистрироваться',
+                    forgotPassword: 'Забыли пароль?',
+                    dontHaveAccount: 'Нет аккаунта?',
+                    haveAccount: 'Уже есть аккаунт?',
+                    sendPasswordReset: 'Отправить сброс пароля',
+                    backToSignIn: 'Назад к входу',
+                    unexpectedError: 'Произошла непредвиденная ошибка',
+                  ),
+                  
+                  // Дополнительное поле для имени пользователя (metadata)
+                  metadataFields: [
+                    MetaDataField(
+                      prefixIcon: const Icon(Icons.person),
+                      label: 'Имя пользователя',
+                      key: 'username', // Ключ для сохранения в метаданных
+                      validator: (val) {
+                        // Валидация: поле обязательно для заполнения
+                        if (val == null || val.isEmpty) {
+                          return 'Введите имя пользователя';
+                        }
+                        return null; // Валидация пройдена
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ГЛАВНАЯ СТРАНИЦА ПРИЛОЖЕНИЯ (HomePage)
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
-
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
-
 class _HomePageState extends State<HomePage> {
-  // Контроллеры для полей формы
+  // Контроллеры для текстовых полей (управляют вводом текста)
   final _namingController = TextEditingController();
   final _statusController = TextEditingController();
   final _balanceController = TextEditingController();
   
-  // Показывать или скрывать форму добавления
+  // Флаг для показа/скрытия формы добавления записи
   bool _showAddForm = false;
 
-  late Future<List<Map<String, dynamic>>> _dataFuture;
-
-  // Realtime Stream для автоматического обновления
+  // Подписка на Realtime Stream (автообновление данных)
   StreamSubscription<List<Map<String, dynamic>>>? _realtimeSubscription;
-  List<Map<String, dynamic>> _items = [];
-  bool _isLoading = true;
-  String? _errorMessage;
-
 
   @override
   void initState() {
     super.initState();
-    _dataFuture = _loadData();
+    // При запуске страницы настраиваем автоматическое обновление данных
     _setupRealtimeStream();
   }
 
-
   @override
   void dispose() {
+    // Очищаем ресурсы при закрытии страницы
     _namingController.dispose();
     _statusController.dispose();
     _balanceController.dispose();
-    _realtimeSubscription?.cancel();
+    _realtimeSubscription?.cancel(); // Отменяем подписку на Stream
     super.dispose();
   }
 
-
-  // Метод загрузки данных
-  Future<List<Map<String, dynamic>>> _loadData() async {
-    try {
-      print('Загружаем данные через FutureBuilder...');
-      
-      final response = await supabase
-          .from('commerce')
-          .select()
-          .order('id', ascending: true);
-      
-      print('Данные загружены через FutureBuilder');
-      return List<Map<String, dynamic>>.from(response);
-    } catch (error) {
-      print('Ошибка загрузки: $error');
-      throw error;
-    }
-  }
-
-
-  // Настройка Realtime Stream
+  // НАСТРОЙКА REALTIME STREAM
+  // Stream автоматически обновляет данные при любых изменениях в таблице
   void _setupRealtimeStream() {
-    print('Настройка Realtime Stream для таблицы commerce...');
-    
     _realtimeSubscription = supabase
-        .from('commerce')
-        .stream(primaryKey: ['id'])
-        .order('id', ascending: true)
+        .from('commerce') // Название таблицы в Supabase
+        .stream(primaryKey: ['id']) // Указываем первичный ключ
+        .order('id', ascending: true) // Сортировка по ID
         .listen(
           (List<Map<String, dynamic>> data) {
-            print('Получены данные из Stream: ${data.length} записей');
-            
-            setState(() {
-              _items = data;
-              _isLoading = false;
-              _errorMessage = null;
-              _dataFuture = Future.value(data);
-            });
-          },
-          onError: (error) {
-            print('Ошибка Stream: $error');
-            setState(() {
-              _errorMessage = error.toString();
-              _isLoading = false;
-            });
+            // Обновляем UI при получении новых данных
+            setState(() {});
           },
         );
-    
-    print('Realtime Stream активирован');
   }
 
-
-  // Создать поле ввода сообщения с обработкой изменений (onChanged)
-  Widget _buildInputField() {
+  // ФОРМА ДОБАВЛЕНИЯ НОВОЙ ЗАПИСИ
+  Widget _buildInputForm() {
     return Card(
-      elevation: 4,
+      elevation: 4, // Тень для карточки
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Поле ввода с обработкой изменений',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue),
+              'Новая запись',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
+            
+            // Поле для названия
             TextField(
               controller: _namingController,
               decoration: const InputDecoration(
-                labelText: 'Naming',
+                labelText: 'Название',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.edit),
               ),
-              onChanged: (value) {
-                print('Поле "Naming" изменено: $value');
-              },
             ),
             const SizedBox(height: 12),
+            
+            // Поле для статуса
             TextField(
               controller: _statusController,
               decoration: const InputDecoration(
-                labelText: 'Status',
+                labelText: 'Статус',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.info),
               ),
-              onChanged: (value) {
-                print('Поле "Status" изменено: $value');
-              },
             ),
             const SizedBox(height: 12),
+            
+            // Поле для баланса (только цифры)
             TextField(
               controller: _balanceController,
               decoration: const InputDecoration(
-                labelText: 'Balance',
+                labelText: 'Баланс',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.account_balance_wallet),
               ),
-              keyboardType: TextInputType.number,
-              onChanged: (value) {
-                print('Поле "Balance" изменено: $value');
-              },
+              keyboardType: TextInputType.number, // Клавиатура с цифрами
             ),
           ],
         ),
@@ -189,53 +275,75 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-
-  // Реализовать отправку сообщения через insert в базу данных
+  // ДОБАВЛЕНИЕ НОВОЙ ЗАПИСИ В БАЗУ ДАННЫХ
   Future<void> _addItem() async {
     try {
-      print('Отправка данных в базу через insert...');
-      
+      // Отправляем данные в Supabase
       await supabase.from('commerce').insert({
         'naming': _namingController.text,
         'status': _statusController.text,
-        'balance': double.tryParse(_balanceController.text) ?? 0,
+        'balance': double.tryParse(_balanceController.text) ?? 0, // Преобразуем в число
       });
 
+      // Очищаем поля после успешного добавления
       _namingController.clear();
       _statusController.clear();
       _balanceController.clear();
       
+      // Скрываем форму
       setState(() {
         _showAddForm = false;
       });
       
-      print('Данные успешно добавлены');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Запись добавлена! Stream автоматически обновит список'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      
+      // Показываем уведомление об успехе
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Запись добавлена!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (error) {
-      print('Ошибка добавления: $error');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Ошибка: $error'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      // Показываем уведомление об ошибке
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка: $error'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
+  // ВЫХОД ИЗ АККАУНТА
+  Future<void> _signOut() async {
+    await supabase.auth.signOut();
+    // AuthGate автоматически перенаправит на страницу входа
+  }
 
   @override
   Widget build(BuildContext context) {
+    final user = supabase.auth.currentUser; // Получаем текущего пользователя
+    
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: const Text('Commerce App'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Commerce App'),
+            // Показываем email пользователя
+            if (user != null)
+              Text(
+                user.email ?? 'Пользователь',
+                style: const TextStyle(fontSize: 12),
+              ),
+          ],
+        ),
         actions: [
+          // Индикатор "LIVE" - показывает, что данные обновляются в реальном времени
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Center(
@@ -262,29 +370,11 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
+          // Кнопка выхода
           IconButton(
-            icon: const Icon(Icons.info_outline),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Realtime Stream'),
-                  content: const Text(
-                    'Используется Supabase Realtime Stream:\n\n'
-                    'supabase.from(\'commerce\')\n'
-                    '  .stream(primaryKey: [\'id\'])\n'
-                    '  .listen(...)\n\n'
-                    'Данные обновляются автоматически без ручного обновления'
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('OK'),
-                    ),
-                  ],
-                ),
-              );
-            },
+            icon: const Icon(Icons.logout),
+            onPressed: _signOut,
+            tooltip: 'Выйти',
           ),
         ],
       ),
@@ -292,34 +382,7 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.green.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.green.shade200),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.stream, color: Colors.green.shade700),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'Realtime Stream активен - данные обновляются автоматически',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            
-            const SizedBox(height: 16),
-
+            // Кнопка "Добавить запись" (если форма скрыта)
             if (!_showAddForm)
               OutlinedButton.icon(
                 onPressed: () => setState(() => _showAddForm = true),
@@ -327,21 +390,25 @@ class _HomePageState extends State<HomePage> {
                 label: const Text('Добавить запись'),
               ),
             
+            // Форма добавления (если форма показана)
             if (_showAddForm) ...[
-              _buildInputField(),
+              _buildInputForm(),
               const SizedBox(height: 16),
+              
+              // Кнопка для отправки данных
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: _addItem,
                   icon: const Icon(Icons.send),
-                  label: const Text('Добавить запись'),
+                  label: const Text('Добавить'),
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.all(16),
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
+              
+              // Кнопка отмены
               TextButton.icon(
                 onPressed: () => setState(() => _showAddForm = false),
                 icon: const Icon(Icons.close),
@@ -351,36 +418,27 @@ class _HomePageState extends State<HomePage> {
             
             const SizedBox(height: 16),
             
+            // СПИСОК ЗАПИСЕЙ ИЗ БАЗЫ ДАННЫХ
             Expanded(
-              child: FutureBuilder<List<Map<String, dynamic>>>(
-                future: _dataFuture,
+              child: StreamBuilder<List<Map<String, dynamic>>>(
+                stream: supabase
+                    .from('commerce')
+                    .stream(primaryKey: ['id'])
+                    .order('id', ascending: true),
                 builder: (context, snapshot) {
+                  // Показываем загрузку при ожидании данных
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          CircularProgressIndicator(),
-                          SizedBox(height: 16),
-                          Text('Загрузка через FutureBuilder...'),
-                        ],
-                      ),
-                    );
+                    return const Center(child: CircularProgressIndicator());
                   }
                   
+                  // Показываем сообщение об ошибке
                   if (snapshot.hasError) {
                     return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.error, size: 64, color: Colors.red),
-                          const SizedBox(height: 16),
-                          Text('Ошибка: ${snapshot.error}'),
-                        ],
-                      ),
+                      child: Text('Ошибка: ${snapshot.error}'),
                     );
                   }
                   
+                  // Показываем пустое состояние, если нет данных
                   if (!snapshot.hasData || snapshot.data!.isEmpty) {
                     return const Center(
                       child: Column(
@@ -394,106 +452,73 @@ class _HomePageState extends State<HomePage> {
                     );
                   }
                   
+                  // Отображаем список записей
                   final items = snapshot.data!;
-                  return Column(
-                    children: [
-                      Card(
-                        color: Colors.green.shade100,
-                        child: Padding(
-                          padding: const EdgeInsets.all(12.0),
-                          child: Row(
-                            children: [
-                              Icon(Icons.check_circle, color: Colors.green.shade700),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'FutureBuilder + Stream: ${items.length} записей',
-                                  style: TextStyle(
-                                    color: Colors.green.shade700,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
+                  return ListView.builder(
+                    itemCount: items.length,
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.all(16),
+                          
+                          // ID записи в круглой иконке
+                          leading: CircleAvatar(
+                            backgroundColor: Colors.blue.shade100,
+                            child: Text(
+                              '${item['id']}',
+                              style: TextStyle(
+                                color: Colors.blue.shade700,
+                                fontWeight: FontWeight.bold,
                               ),
-                            ],
+                            ),
+                          ),
+                          
+                          // Название записи
+                          title: Text(
+                            item['naming'] ?? 'Без названия',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          
+                          // Детали: статус и баланс
+                          subtitle: Text(
+                            'Статус: ${item['status']}\nБаланс: ${item['balance']}',
+                          ),
+                          isThreeLine: true,
+                          
+                          // Цветной бейдж со статусом
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: item['status'] == 'millioner'
+                                  ? Colors.green
+                                  : Colors.blue,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              item['status'] ?? '',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      Expanded(
-                        child: ListView(
-                          children: List.generate(items.length, (index) {
-                            final item = items[index];
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              child: ListTile(
-                                contentPadding: const EdgeInsets.all(16),
-                                leading: CircleAvatar(
-                                  backgroundColor: Colors.blue.shade100,
-                                  child: Text(
-                                    '${item['id']}',
-                                    style: TextStyle(
-                                      color: Colors.blue.shade700,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                                title: Text(
-                                  item['naming'] ?? 'Без названия',
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  'Status: ${item['status']}\n'
-                                  'Balance: ${item['balance']}\n'
-                                  'FutureBuilder + Stream index[${index}]',
-                                ),
-                                isThreeLine: true,
-                                trailing: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: item['status'] == 'millioner'
-                                        ? Colors.green
-                                        : Colors.blue,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    item['status'] ?? '',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          }),
-                        ),
-                      ),
-                    ],
+                      );
+                    },
                   );
                 },
               ),
             ),
           ],
         ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Stream обновляется автоматически'),
-              backgroundColor: Colors.blue,
-            ),
-          );
-        },
-        tooltip: 'Stream обновляется автоматически',
-        icon: const Icon(Icons.stream),
-        label: const Text('Auto'),
       ),
     );
   }
